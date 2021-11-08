@@ -4,12 +4,24 @@ import middy from '@middy/core';
 import httpErrorHandler from '@middy/http-error-handler';
 import createHttpError from 'http-errors';
 import { setAuctionPictureUrl } from './setAuctionPictureUrl';
+import uploadAuctionPictureSchema from '../lib/schemas/uploadAuctionPictureSchema';
+import validator from '@middy/validator';
 
 export async function uploadAuctionPicture(event) {
   const { id } = event.pathParameters;
+  const { email } = event.requestContext.authorizer;
   const auction = await getAuctionById(id);
+
+  //Validate auction ownership
+  if (auction.seller !== email) {
+    throw new createHttpError.Forbidden(
+      `You are not the seller of this auction!`,
+    );
+  }
+
   const base64 = event.body.replace(/^data:image\/\w+;base64,/, '');
   const buffer = Buffer.from(base64, 'base64');
+
   let updatedAuction;
 
   try {
@@ -26,4 +38,14 @@ export async function uploadAuctionPicture(event) {
   };
 }
 
-export const handler = middy(uploadAuctionPicture).use(httpErrorHandler());
+export const handler = middy(uploadAuctionPicture)
+  .use(httpErrorHandler())
+  .use(
+    validator({
+      inputSchema: uploadAuctionPictureSchema,
+      ajvOptions: {
+        useDefaults: true,
+        strict: false,
+      },
+    }),
+  );
